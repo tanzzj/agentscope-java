@@ -45,6 +45,8 @@ import io.agentscope.harness.agent.artifact.ArtifactDeliveryTarget;
 import io.agentscope.harness.agent.coordination.LocalPeriodicGate;
 import io.agentscope.harness.agent.coordination.PeriodicGate;
 import io.agentscope.harness.agent.coordination.StoreBackedPeriodicGate;
+import io.agentscope.harness.agent.extension.HarnessBuilderExtension;
+import io.agentscope.harness.agent.extension.HarnessExtensionContext;
 import io.agentscope.harness.agent.filesystem.AbstractFilesystem;
 import io.agentscope.harness.agent.filesystem.CompositeFilesystem;
 import io.agentscope.harness.agent.filesystem.OverlayFilesystem;
@@ -1277,6 +1279,8 @@ public class HarnessAgent implements Agent, AutoCloseable {
         boolean planModeAllowShell = false;
         String planFileDir = PlanModeManager.DEFAULT_PLAN_DIR;
 
+        final List<HarnessBuilderExtension> builderExtensions = new ArrayList<>();
+
         ToolsConfig toolsConfigOverride;
         McpServerRegistrationListener mcpServerRegistrationListener;
 
@@ -1878,6 +1882,28 @@ public class HarnessAgent implements Agent, AutoCloseable {
          */
         public Builder memory(MemoryConfig config) {
             this.memoryConfig = config != null ? config : MemoryConfig.defaults();
+            return this;
+        }
+
+        /**
+         * Attaches a builder extension (tools / middlewares / state-store-aware wiring) that is
+         * installed at a fixed orchestration point of {@link #build()} — the seam third-party
+         * capability modules (e.g. agentscope-extensions-a2ui) use instead of new builder methods.
+         * Installed in registration order, after built-in tools are registered and before the
+         * inner ReActAgent is assembled.
+         */
+        public Builder extension(HarnessBuilderExtension extension) {
+            this.builderExtensions.add(java.util.Objects.requireNonNull(extension, "extension"));
+            return this;
+        }
+
+        /** Appends multiple builder extensions in the given order (see {@link #extension}). */
+        public Builder extensions(HarnessBuilderExtension... extensions) {
+            if (extensions != null) {
+                for (HarnessBuilderExtension extension : extensions) {
+                    extension(extension);
+                }
+            }
             return this;
         }
 
@@ -2676,6 +2702,31 @@ public class HarnessAgent implements Agent, AutoCloseable {
                 agentToolkit.registerTool(new MemoryGetTool(wsManager));
                 agentToolkit.registerTool(new MemorySaveTool(wsManager));
                 agentToolkit.registerTool(new SessionSearchTool(wsManager));
+            }
+
+            // ---- Builder extensions (installed after built-in tools, before inner assembly) ----
+            if (!builderExtensions.isEmpty()) {
+                final AgentStateStore extensionStateStore = effectiveSession;
+                HarnessExtensionContext extensionContext =
+                        new HarnessExtensionContext() {
+                            @Override
+                            public void registerTool(AgentTool tool) {
+                                agentToolkit.registerTool(tool);
+                            }
+
+                            @Override
+                            public void addMiddleware(MiddlewareBase middleware) {
+                                inner.middleware(middleware);
+                            }
+
+                            @Override
+                            public AgentStateStore stateStore() {
+                                return extensionStateStore;
+                            }
+                        };
+                for (HarnessBuilderExtension extension : builderExtensions) {
+                    extension.install(extensionContext);
+                }
             }
             WorkspacePathNormalizer pathNormalizer;
             if (filesystem instanceof OverlayFilesystem ov

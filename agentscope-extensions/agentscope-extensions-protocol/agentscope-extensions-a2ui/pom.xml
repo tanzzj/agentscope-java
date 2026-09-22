@@ -13,30 +13,29 @@
   ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   ~ See the License for the specific language governing permissions and
   ~ limitations under the License.
-  -->
+-->
 
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>io.agentscope</groupId>
-        <artifactId>agentscope-extensions</artifactId>
+        <artifactId>agentscope-extensions-protocol</artifactId>
         <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
+    <artifactId>agentscope-extensions-a2ui</artifactId>
 
-    <artifactId>agentscope-extensions-protocol</artifactId>
-    <name>AgentScope Java - Protocol</name>
-    <description>Protocol integrations for AgentScope Java</description>
-    <packaging>pom</packaging>
+    <name>AgentScope Java - Extensions - A2UI</name>
+    <description>AgentScope Extensions - A2UI structured-UI capability for HarnessAgent (a2ui_render / a2ui_present / a2ui_catalog / a2ui_ask_user_question)</description>
 
-    <modules>
-        <module>agentscope-extensions-a2a</module>
-        <module>agentscope-extensions-agui</module>
-        <module>agentscope-extensions-a2ui</module>
-        <module>agentscope-extensions-chat-completions-web</module>
-        <module>agentscope-extensions-agent-protocol</module>
-    </modules>
-
+    <dependencies>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
 </project>
