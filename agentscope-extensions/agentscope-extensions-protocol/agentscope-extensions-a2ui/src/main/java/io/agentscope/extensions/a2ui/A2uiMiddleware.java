@@ -27,11 +27,10 @@ import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.tool.ToolkitAware;
 import io.agentscope.extensions.a2ui.catalog.A2uiCatalog;
-import io.agentscope.extensions.a2ui.middleware.A2uiPresentStopMiddleware;
+import io.agentscope.extensions.a2ui.middleware.A2uiRenderStopMiddleware;
 import io.agentscope.extensions.a2ui.state.A2uiSurfaceRegistry;
-import io.agentscope.extensions.a2ui.tool.A2uiAskUserQuestionTool;
-import io.agentscope.extensions.a2ui.tool.A2uiPresentTool;
 import io.agentscope.extensions.a2ui.tool.A2uiRenderTool;
+import io.agentscope.extensions.a2ui.tool.AskUserQuestionTool;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import reactor.core.publisher.Flux;
@@ -41,16 +40,20 @@ import reactor.core.publisher.Mono;
  * The A2UI capability as a single plain middleware (see the A2UI spec): attach with {@code
  * HarnessAgent.builder().middleware(new A2uiMiddleware(config))} — no framework-side seam.
  *
- * <p>Registers only the parent-facing tools {@code a2ui_render} / {@code a2ui_present} (natural
- * -language intent) and {@code a2ui_ask_user_question}. The component DSL itself is quarantined in
- * the {@link A2uiRenderManager} sub-agent, which owns the {@code a2ui_catalog} read tool and the
- * internal tree-submit tool on its own throwaway toolkit — the main model never sees the catalog.
+ * <p>Registers only the parent-facing tools {@code a2ui_render} (natural-language intent — the
+ * single UI entry, also carrying the old {@code a2ui_present} "final delivery" semantics via
+ * {@link A2uiConfig#stopAfterPresent()}) and {@code ask_user_question} with its A2UI form
+ * flavour ({@code enableA2ui=true}; the plain clarification flavour lives on {@link
+ * ClarificationMiddleware} and is independent of this toggle). The component DSL itself is
+ * quarantined in the {@link A2uiRenderManager} sub-agent, which owns the {@code a2ui_catalog}
+ * read tool and the internal tree-submit tool on its own throwaway toolkit — the main model
+ * never sees the catalog.
  *
  * <p>Uses only existing public surfaces: {@link ToolkitAware#rebindToolkit} as the build-time
  * install point (the agent builder deep-copies the toolkit and rebinds every middleware, see the
  * interface javadoc on re-registering contributed tools), {@link #onAgent} to capture the
  * agent-resolved {@link AgentStateStore} and model lazily, and the lifecycle hooks to extend
- * {@link A2uiPresentStopMiddleware}'s stop/prompt behavior.
+ * {@link A2uiRenderStopMiddleware}'s stop/prompt behavior.
  *
  * <p>The render model is the one passed to {@link #A2uiMiddleware(A2uiConfig, Model)} — for a
  * lighter/cheaper UI model than the conversation model — or, when {@code null}, the hosting
@@ -65,7 +68,7 @@ public final class A2uiMiddleware implements MiddlewareBase, ToolkitAware {
 
     private final A2uiConfig config;
     private final A2uiCatalog catalog;
-    private final A2uiPresentStopMiddleware presentStopDelegate;
+    private final A2uiRenderStopMiddleware renderStopDelegate;
     private final AtomicReference<AgentStateStore> stateStore = new AtomicReference<>();
     private final AtomicReference<Model> renderModel = new AtomicReference<>();
 
@@ -84,7 +87,7 @@ public final class A2uiMiddleware implements MiddlewareBase, ToolkitAware {
     public A2uiMiddleware(A2uiConfig config, Model renderModel) {
         this.config = config != null ? config : A2uiConfig.defaults();
         this.catalog = A2uiCatalog.load(this.config.catalogResource(), this.config.catalogId());
-        this.presentStopDelegate = new A2uiPresentStopMiddleware(this.config);
+        this.renderStopDelegate = new A2uiRenderStopMiddleware(this.config);
         this.renderModel.set(renderModel);
     }
 
@@ -97,8 +100,7 @@ public final class A2uiMiddleware implements MiddlewareBase, ToolkitAware {
                         new A2uiSurfaceRegistry(config, stateStore::get),
                         renderModel::get);
         toolkit.registerTool(new A2uiRenderTool(renderer));
-        toolkit.registerTool(new A2uiPresentTool(renderer));
-        toolkit.registerTool(new A2uiAskUserQuestionTool(renderer));
+        toolkit.registerTool(new AskUserQuestionTool(renderer, true));
     }
 
     @Override
@@ -120,11 +122,11 @@ public final class A2uiMiddleware implements MiddlewareBase, ToolkitAware {
             RuntimeContext ctx,
             ActingInput input,
             Function<ActingInput, Flux<AgentEvent>> next) {
-        return presentStopDelegate.onActing(agent, ctx, input, next);
+        return renderStopDelegate.onActing(agent, ctx, input, next);
     }
 
     @Override
     public Mono<String> onSystemPrompt(Agent agent, RuntimeContext ctx, String currentPrompt) {
-        return presentStopDelegate.onSystemPrompt(agent, ctx, currentPrompt);
+        return renderStopDelegate.onSystemPrompt(agent, ctx, currentPrompt);
     }
 }

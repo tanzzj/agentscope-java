@@ -58,7 +58,11 @@ public final class A2uiConfig {
         return catalogResource;
     }
 
-    /** Whether a successful {@code a2ui_present} stops the current acting round. */
+    /**
+     * Whether a successful {@code a2ui_render} stops the current acting round (the delivered
+     * surface then waits for user interaction). Name kept for config compatibility; {@code
+     * a2ui_present} no longer exists as a separate tool.
+     */
     public boolean stopAfterPresent() {
         return stopAfterPresent;
     }

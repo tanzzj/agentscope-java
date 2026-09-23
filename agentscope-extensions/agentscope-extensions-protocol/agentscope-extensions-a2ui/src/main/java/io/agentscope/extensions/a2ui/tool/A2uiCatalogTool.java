@@ -41,7 +41,7 @@ public class A2uiCatalogTool implements AgentTool {
     @Override
     public String getDescription() {
         return "Load the A2UI component catalog (component names, props, examples). Call this"
-                + " once before your first a2ui_render/a2ui_present submission.";
+                + " once before your first a2ui_render submission.";
     }
 
     @Override

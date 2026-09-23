@@ -32,27 +32,28 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
- * Stops the acting round right after a successful {@code a2ui_present} tool result so the
+ * Stops the acting round right after a successful {@code a2ui_render} tool result so the
  * delivered envelope is never paraphrased back into reply text (spec §8.2). Also appends the A2UI
  * usage constraints to the system prompt (spec §5.4).
  */
-public final class A2uiPresentStopMiddleware implements MiddlewareBase {
+public final class A2uiRenderStopMiddleware implements MiddlewareBase {
 
     private static final String SYSTEM_PROMPT_APPEND =
             "\n\n"
                 + "## A2UI structured UI\n"
-                + "- Show structured UI with `a2ui_render`; deliver the final UI with"
-                + " `a2ui_present`. Never hand-write A2UI envelope JSON in reply text.\n"
-                + "- Both tools take a natural-language `description` of the UI (plus optional"
+                + "- Show structured UI with `a2ui_render` — it is the only UI entry; it creates or"
+                + " updates the surface from your request. Never hand-write A2UI envelope JSON in"
+                + " reply text.\n"
+                + "- The tool takes a natural-language `description` of the UI (plus optional"
                 + " `context` data it must show); a dedicated render agent builds the component"
                 + " tree — you never handle components or props yourself.\n"
                 + "- `surfaceId` is managed by the system: never generate, guess, or modify it.\n"
-                + "- Collect user input with `a2ui_ask_user_question` instead of plain-text"
-                + " follow-up questions.\n";
+                + "- Collect user input with `ask_user_question` instead of plain-text follow-up"
+                + " questions.\n";
 
     private final A2uiConfig config;
 
-    public A2uiPresentStopMiddleware(A2uiConfig config) {
+    public A2uiRenderStopMiddleware(A2uiConfig config) {
         this.config = config;
     }
 
@@ -67,27 +68,28 @@ public final class A2uiPresentStopMiddleware implements MiddlewareBase {
         }
         return Flux.defer(
                 () -> {
-                    AtomicBoolean presentDone = new AtomicBoolean();
+                    AtomicBoolean rendered = new AtomicBoolean();
                     return next.apply(input)
                             .doOnNext(
                                     event -> {
+                                        // Parent-toolkit render only: the child render agent runs
+                                        // without middleware chains, so its internal tool events
+                                        // never reach this hook.
                                         if (event instanceof ToolResultEndEvent end
-                                                && A2uiConstants.TOOL_PRESENT.equals(
+                                                && A2uiConstants.TOOL_RENDER.equals(
                                                         end.getToolCallName())
                                                 && end.getState() == ToolResultState.SUCCESS) {
-                                            presentDone.set(true);
+                                            rendered.set(true);
                                         }
                                     })
                             .concatWith(
                                     Flux.defer(
                                             () ->
-                                                    presentDone.get()
+                                                    rendered.get()
                                                             ? Flux.just(
                                                                     new RequestStopEvent(
-                                                                            "A2UI final"
-                                                                                + " presentation"
-                                                                                + " delivered via"
-                                                                                + " a2ui_present",
+                                                                            "A2UI surface delivered"
+                                                                                + " via a2ui_render",
                                                                             GenerateReason
                                                                                     .ACTING_STOP_REQUESTED))
                                                             : Flux.empty()));

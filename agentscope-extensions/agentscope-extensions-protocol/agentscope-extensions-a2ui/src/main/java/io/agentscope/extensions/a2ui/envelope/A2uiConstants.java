@@ -23,9 +23,10 @@ public final class A2uiConstants {
     public static final String MESSAGE_TYPE_UPDATE_COMPONENTS = "updateComponents";
 
     public static final String TOOL_RENDER = "a2ui_render";
-    public static final String TOOL_PRESENT = "a2ui_present";
     public static final String TOOL_CATALOG = "a2ui_catalog";
-    public static final String TOOL_ASK_USER_QUESTION = "a2ui_ask_user_question";
+
+    /** HITL ask tool — no {@code a2ui_} prefix: plain mode (ClarificationMiddleware) is A2UI-free. */
+    public static final String TOOL_ASK_USER_QUESTION = "ask_user_question";
 
     /** {@code AgentStateStore} key under which session surfaces are persisted. */
     public static final String STATE_STORE_KEY_SURFACES = "a2ui_surfaces";

@@ -24,10 +24,10 @@ import java.util.Map;
 import reactor.core.publisher.Mono;
 
 /**
- * Shared JSON schema and invocation pipeline for the intent-based UI tools ({@code a2ui_render} /
- * {@code a2ui_present}): the main agent submits a natural-language description and the render
- * sub-agent turn produces the component tree. Failures never throw out of the tool: they are
- * returned as {@code error} results so the ReAct loop can report or self-correct.
+ * Shared JSON schema and invocation pipeline for the intent-based UI tool ({@code a2ui_render}):
+ * the main agent submits a natural-language description and the render sub-agent turn produces the
+ * component tree. Failures never throw out of the tool: they are returned as {@code error} results
+ * so the ReAct loop can report or self-correct.
  */
 final class A2uiIntentSchema {
 

@@ -24,6 +24,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.model.ToolSchema;
@@ -84,10 +85,31 @@ class A2uiMiddlewareTest {
         HarnessAgent agent = build(new A2uiMiddleware());
         List<String> toolNames = toolNamesOf(agent);
         assertTrue(toolNames.contains("a2ui_render"));
-        assertTrue(toolNames.contains("a2ui_present"));
-        assertTrue(toolNames.contains("a2ui_ask_user_question"));
-        // The component DSL (catalog read + tree submit) lives only on the render sub-agent.
+        assertTrue(toolNames.contains("ask_user_question"));
+        // The component DSL (catalog read + tree submit) lives only on the render sub-agent,
+        // and a2ui_present has been merged into a2ui_render.
         assertFalse(toolNames.contains("a2ui_catalog"));
+        assertFalse(toolNames.contains("a2ui_present"));
+        assertFalse(toolNames.contains("a2ui_ask_user_question"));
+    }
+
+    @Test
+    void clarificationMiddlewareRegistersPlainAskTool() throws Exception {
+        HarnessAgent agent = buildWith(new ClarificationMiddleware());
+        List<String> toolNames = toolNamesOf(agent);
+        assertTrue(toolNames.contains("ask_user_question"));
+        assertFalse(toolNames.contains("a2ui_render"));
+    }
+
+    private HarnessAgent buildWith(MiddlewareBase middleware) throws Exception {
+        Files.createDirectories(workspace);
+        return HarnessAgent.builder()
+                .name("a2ui-middleware-test")
+                .model(stubModel())
+                .workspace(workspace)
+                .abstractFilesystem(new LocalFilesystem(workspace))
+                .middleware(middleware)
+                .build();
     }
 
     @Test

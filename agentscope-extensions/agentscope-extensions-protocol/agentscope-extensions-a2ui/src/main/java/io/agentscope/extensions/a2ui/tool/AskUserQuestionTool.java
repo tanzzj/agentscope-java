@@ -19,6 +19,7 @@ import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.ToolSuspendException;
+import io.agentscope.core.util.JsonUtils;
 import io.agentscope.extensions.a2ui.A2uiRenderer;
 import io.agentscope.extensions.a2ui.envelope.A2uiConstants;
 import io.agentscope.extensions.a2ui.envelope.A2uiValidationException;
@@ -30,19 +31,36 @@ import java.util.Set;
 import reactor.core.publisher.Mono;
 
 /**
- * HITL entry point (spec §9): compiles structured questions into an A2UI form envelope, then
- * suspends the tool call so the envelope surfaces as a {@code tool_call} interrupt message and the
- * frontend's resume payload (answer JSON) becomes this call's tool result.
+ * HITL entry point (spec §9, v1.10 dual-mode): compiles structured questions and suspends the
+ * tool call so the payload surfaces as a {@code tool_call} interrupt message and the frontend's
+ * resume payload (answer JSON) becomes this call's tool result.
+ *
+ * <p>{@code enableA2ui} selects the suspend payload: {@code true} renders the questions as an
+ * A2UI form envelope through {@link A2uiRenderer} (registered by {@code A2uiMiddleware});
+ * {@code false} suspends with the canonical {@code {"questions":[…]}} JSON so a plain AG-UI
+ * frontend can render a native text question card (registered by {@link
+ * io.agentscope.extensions.a2ui.ClarificationMiddleware}, no renderer required).
  */
-public class A2uiAskUserQuestionTool implements AgentTool {
+public class AskUserQuestionTool implements AgentTool {
 
     private static final Set<String> QUESTION_TYPES =
             Set.of("text", "select", "multi_select", "confirm");
 
     private final A2uiRenderer renderer;
+    private final boolean enableA2ui;
 
-    public A2uiAskUserQuestionTool(A2uiRenderer renderer) {
+    /**
+     * @param renderer A2UI renderer; required when {@code enableA2ui} is {@code true}, ignored
+     *     (may be {@code null}) when {@code false}.
+     * @param enableA2ui suspend with an A2UI form envelope ({@code true}) or with the plain
+     *     canonical questions JSON ({@code false}).
+     */
+    public AskUserQuestionTool(A2uiRenderer renderer, boolean enableA2ui) {
+        if (enableA2ui && renderer == null) {
+            throw new IllegalArgumentException("renderer is required when enableA2ui is true");
+        }
         this.renderer = renderer;
+        this.enableA2ui = enableA2ui;
     }
 
     @Override
@@ -52,10 +70,13 @@ public class A2uiAskUserQuestionTool implements AgentTool {
 
     @Override
     public String getDescription() {
-        return "Ask the user one or more structured questions as an A2UI form and wait for the"
-                + " answer. Use this instead of plain-text follow-up questions whenever input"
-                + " collection benefits from widgets. The tool suspends until the user submits;"
-                + " the returned value is a JSON object mapping question id to answer.";
+        return "Ask the user one or more structured questions and wait for the answer. Use this"
+                + " instead of plain-text follow-up questions whenever input collection benefits"
+                + " from widgets. The tool suspends until the user submits; the returned value is"
+                + " a JSON object mapping question id to answer."
+                + (enableA2ui
+                        ? " Questions are rendered as an A2UI form."
+                        : " Questions are rendered as a plain-text question card.");
     }
 
     @Override
@@ -133,13 +154,16 @@ public class A2uiAskUserQuestionTool implements AgentTool {
                             if (error != null) {
                                 return ToolResultBlock.error(error);
                             }
-                            String envelope =
-                                    renderer.renderEnvelope(
-                                            param.getRuntimeContext(), toFormComponents(questions));
-                            // Suspend: the envelope JSON becomes the interrupt message the
-                            // frontend renders as a form; the resume payload is injected back
-                            // as this call's tool result (tool is NOT replayed).
-                            throw new ToolSuspendException(envelope);
+                            // Suspend: the payload becomes the interrupt message the frontend
+                            // renders (A2UI form or plain question card); the resume payload is
+                            // injected back as this call's tool result (tool is NOT replayed).
+                            throw new ToolSuspendException(
+                                    enableA2ui
+                                            ? renderer.renderEnvelope(
+                                                    param.getRuntimeContext(),
+                                                    toFormComponents(questions))
+                                            : JsonUtils.getJsonCodec()
+                                                    .toJson(Map.of("questions", questions)));
                         })
                 .onErrorResume(
                         Exception.class,
@@ -154,7 +178,7 @@ public class A2uiAskUserQuestionTool implements AgentTool {
                             }
                             return Mono.just(
                                     ToolResultBlock.error(
-                                            "A2UI ask_user_question failed: " + e.getMessage()));
+                                            "ask_user_question failed: " + e.getMessage()));
                         });
     }
 

@@ -46,8 +46,9 @@ public class A2uiRenderTool implements AgentTool {
     public String getDescription() {
         return "Render (create or update) a structured A2UI surface from a natural-language"
                 + " description; a dedicated render agent generates the component tree. Put the"
-                + " UI spec in `description` and any data it must show in `context`. Never"
-                + " hand-write A2UI JSON in reply text — always submit it here.";
+                + " UI spec in `description` and any data it must show in `context`. This is the"
+                + " only UI entry — never hand-write A2UI JSON in reply text, and after a"
+                + " successful call do not restate the UI in words.";
     }
 
     @Override

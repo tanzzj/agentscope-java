@@ -40,10 +40,10 @@ import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.ToolSuspendException;
 import io.agentscope.extensions.a2ui.catalog.A2uiCatalog;
 import io.agentscope.extensions.a2ui.envelope.A2uiEnvelopeValidator;
-import io.agentscope.extensions.a2ui.middleware.A2uiPresentStopMiddleware;
-import io.agentscope.extensions.a2ui.tool.A2uiAskUserQuestionTool;
+import io.agentscope.extensions.a2ui.middleware.A2uiRenderStopMiddleware;
 import io.agentscope.extensions.a2ui.tool.A2uiRenderTool;
 import io.agentscope.extensions.a2ui.tool.A2uiTreeRenderTool;
+import io.agentscope.extensions.a2ui.tool.AskUserQuestionTool;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -388,7 +388,7 @@ class A2uiPipelineTest {
 
     @Test
     void askUserQuestionSuspendsWithFormEnvelope() {
-        A2uiAskUserQuestionTool tool = new A2uiAskUserQuestionTool(renderer(A2uiConfig.defaults()));
+        AskUserQuestionTool tool = new AskUserQuestionTool(renderer(A2uiConfig.defaults()), true);
         ToolCallParam param =
                 ToolCallParam.builder()
                         .runtimeContext(RuntimeContext.builder().sessionId("s").build())
@@ -413,8 +413,38 @@ class A2uiPipelineTest {
     }
 
     @Test
+    void plainAskSuspendsWithCanonicalQuestionsJson() {
+        AskUserQuestionTool tool = new AskUserQuestionTool(null, false);
+        ToolCallParam param =
+                ToolCallParam.builder()
+                        .runtimeContext(RuntimeContext.empty())
+                        .input(
+                                Map.of(
+                                        "questions",
+                                        List.of(
+                                                Map.of(
+                                                        "id", "q1",
+                                                        "question", "Pick one",
+                                                        "type", "select",
+                                                        "options", List.of("a", "b")))))
+                        .build();
+        ToolSuspendException suspend =
+                assertThrows(ToolSuspendException.class, () -> tool.callAsync(param).block());
+        String payload = suspend.getReason();
+        // Plain clarification card contract (spec §9.1): canonical questions JSON, no envelope.
+        assertTrue(payload.startsWith("{\"questions\":["));
+        assertTrue(payload.contains("\"id\":\"q1\""));
+        assertFalse(payload.contains("createSurface"));
+    }
+
+    @Test
+    void enableA2uiWithoutRendererFailsFast() {
+        assertThrows(IllegalArgumentException.class, () -> new AskUserQuestionTool(null, true));
+    }
+
+    @Test
     void askUserQuestionRejectsInvalidQuestions() {
-        A2uiAskUserQuestionTool tool = new A2uiAskUserQuestionTool(renderer(A2uiConfig.defaults()));
+        AskUserQuestionTool tool = new AskUserQuestionTool(renderer(A2uiConfig.defaults()), true);
         ToolCallParam param =
                 ToolCallParam.builder()
                         .runtimeContext(RuntimeContext.empty())
@@ -433,16 +463,16 @@ class A2uiPipelineTest {
     }
 
     @Test
-    void successfulPresentEmitsStopEvent() {
-        A2uiPresentStopMiddleware mw = new A2uiPresentStopMiddleware(A2uiConfig.defaults());
-        ToolResultEndEvent presentEnd =
-                new ToolResultEndEvent("r1", "tc1", "a2ui_present", ToolResultState.SUCCESS);
+    void successfulRenderEmitsStopEvent() {
+        A2uiRenderStopMiddleware mw = new A2uiRenderStopMiddleware(A2uiConfig.defaults());
+        ToolResultEndEvent renderEnd =
+                new ToolResultEndEvent("r1", "tc1", "a2ui_render", ToolResultState.SUCCESS);
         List<AgentEvent> events =
                 mw.onActing(
                                 null,
                                 RuntimeContext.empty(),
                                 new ActingInput(List.of()),
-                                in -> Flux.just(presentEnd))
+                                in -> Flux.just(renderEnd))
                         .collectList()
                         .block();
         assertEquals(2, events.size());
@@ -451,17 +481,17 @@ class A2uiPipelineTest {
 
     @Test
     void otherToolResultsDoNotStop() {
-        A2uiPresentStopMiddleware mw = new A2uiPresentStopMiddleware(A2uiConfig.defaults());
-        ToolResultEndEvent renderEnd =
-                new ToolResultEndEvent("r1", "tc1", "a2ui_render", ToolResultState.SUCCESS);
-        ToolResultEndEvent presentError =
-                new ToolResultEndEvent("r1", "tc2", "a2ui_present", ToolResultState.ERROR);
+        A2uiRenderStopMiddleware mw = new A2uiRenderStopMiddleware(A2uiConfig.defaults());
+        ToolResultEndEvent otherEnd =
+                new ToolResultEndEvent("r1", "tc1", "some_tool", ToolResultState.SUCCESS);
+        ToolResultEndEvent renderError =
+                new ToolResultEndEvent("r1", "tc2", "a2ui_render", ToolResultState.ERROR);
         List<AgentEvent> events =
                 mw.onActing(
                                 null,
                                 RuntimeContext.empty(),
                                 new ActingInput(List.of()),
-                                in -> Flux.just(renderEnd, presentError))
+                                in -> Flux.just(otherEnd, renderError))
                         .collectList()
                         .block();
         assertEquals(2, events.size());
@@ -470,7 +500,7 @@ class A2uiPipelineTest {
 
     @Test
     void systemPromptAppendCarriesUsageConstraints() {
-        A2uiPresentStopMiddleware mw = new A2uiPresentStopMiddleware(A2uiConfig.defaults());
+        A2uiRenderStopMiddleware mw = new A2uiRenderStopMiddleware(A2uiConfig.defaults());
         String prompt = mw.onSystemPrompt(null, RuntimeContext.empty(), "BASE").block();
         assertTrue(prompt.startsWith("BASE"));
         assertTrue(prompt.contains("a2ui_render"));
