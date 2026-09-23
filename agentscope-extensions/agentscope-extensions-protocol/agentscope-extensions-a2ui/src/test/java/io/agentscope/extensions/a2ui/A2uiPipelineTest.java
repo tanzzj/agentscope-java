@@ -42,7 +42,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 
-/** Unit coverage for the harness A2UI pipeline: catalog, validator, surfaces, tools, middleware. */
+/** Unit coverage for the A2UI pipeline: catalog, validator, surfaces, tools, middleware. */
 class A2uiPipelineTest {
 
     private static final A2uiCatalog CATALOG =
@@ -52,7 +52,7 @@ class A2uiPipelineTest {
         return new A2uiRenderer(
                 config,
                 CATALOG,
-                new io.agentscope.extensions.a2ui.state.A2uiSurfaceRegistry(config, null));
+                new io.agentscope.extensions.a2ui.state.A2uiSurfaceRegistry(config, () -> null));
     }
 
     private static Map<String, Object> comp(

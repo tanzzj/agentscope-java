@@ -21,12 +21,13 @@ import io.agentscope.extensions.a2ui.A2uiConfig;
 import io.agentscope.extensions.a2ui.envelope.A2uiConstants;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Two-tier surface registry (spec §7): a run-scoped cache on {@link RuntimeContext} plus a
- * session-scoped list persisted through {@link AgentStateStore} when one is configured. Surface
+ * session-scoped list persisted through {@link AgentStateStore} when one is available. Surface
  * ids are system-generated ({@code "s-" + sha1(sessionId + ":" + ordinal) first 8 hex chars}) and
  * never exposed to the LLM schema.
  */
@@ -38,9 +39,9 @@ public final class A2uiSurfaceRegistry {
     public record SurfaceRef(String surfaceId, boolean newlyCreated) {}
 
     private final A2uiConfig config;
-    private final AgentStateStore stateStore;
+    private final Supplier<AgentStateStore> stateStore;
 
-    public A2uiSurfaceRegistry(A2uiConfig config, AgentStateStore stateStore) {
+    public A2uiSurfaceRegistry(A2uiConfig config, Supplier<AgentStateStore> stateStore) {
         this.config = config;
         this.stateStore = stateStore;
     }
@@ -63,12 +64,12 @@ public final class A2uiSurfaceRegistry {
     }
 
     private A2uiSurfaceState loadState(String userId, String sessionId) {
-        if (stateStore == null || !config.surfacePersistEnabled()) {
+        AgentStateStore store = stateStore.get();
+        if (store == null || !config.surfacePersistEnabled()) {
             return A2uiSurfaceState.empty();
         }
         try {
-            return stateStore
-                    .get(
+            return store.get(
                             userId,
                             sessionId,
                             A2uiConstants.STATE_STORE_KEY_SURFACES,
@@ -84,11 +85,12 @@ public final class A2uiSurfaceRegistry {
     }
 
     private void saveState(String userId, String sessionId, A2uiSurfaceState state) {
-        if (stateStore == null || !config.surfacePersistEnabled()) {
+        AgentStateStore store = stateStore.get();
+        if (store == null || !config.surfacePersistEnabled()) {
             return;
         }
         try {
-            stateStore.save(userId, sessionId, A2uiConstants.STATE_STORE_KEY_SURFACES, state);
+            store.save(userId, sessionId, A2uiConstants.STATE_STORE_KEY_SURFACES, state);
         } catch (Exception e) {
             log.warn("A2UI: failed to persist surface state for session {}", sessionId, e);
         }

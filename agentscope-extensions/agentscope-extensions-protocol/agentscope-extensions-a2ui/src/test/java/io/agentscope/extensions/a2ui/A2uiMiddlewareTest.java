@@ -27,7 +27,6 @@ import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.model.ToolSchema;
-import io.agentscope.extensions.a2ui.middleware.A2uiPresentStopMiddleware;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.filesystem.local.LocalFilesystem;
 import java.nio.file.Files;
@@ -38,8 +37,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import reactor.core.publisher.Flux;
 
-/** Verifies {@link A2uiExtension} installs the A2UI capability through the builder seam. */
-class A2uiExtensionTest {
+/**
+ * Verifies {@link A2uiMiddleware} wires the A2UI capability through public framework surfaces
+ * only: {@code builder.middleware(...)} plus toolkit rebinding at build time.
+ */
+class A2uiMiddlewareTest {
 
     @TempDir Path workspace;
 
@@ -57,66 +59,54 @@ class A2uiExtensionTest {
         return model;
     }
 
-    private HarnessAgent build(boolean withA2ui) throws Exception {
+    private HarnessAgent build(A2uiMiddleware middleware) throws Exception {
         Files.createDirectories(workspace);
         HarnessAgent.Builder builder =
                 HarnessAgent.builder()
-                        .name("a2ui-wiring-test")
+                        .name("a2ui-middleware-test")
                         .model(stubModel())
                         .workspace(workspace)
                         .abstractFilesystem(new LocalFilesystem(workspace));
-        if (withA2ui) {
-            builder.extension(new A2uiExtension());
+        if (middleware != null) {
+            builder.middleware(middleware);
         }
         return builder.build();
     }
 
+    private static List<String> toolNamesOf(HarnessAgent agent) {
+        return agent.getDelegate().getToolkit().getToolSchemas().stream()
+                .map(ToolSchema::getName)
+                .toList();
+    }
+
     @Test
-    void attachingExtensionRegistersFourToolsAndStopMiddleware() throws Exception {
-        HarnessAgent agent = build(true);
-        List<String> toolNames =
-                agent.getDelegate().getToolkit().getToolSchemas().stream()
-                        .map(ToolSchema::getName)
-                        .toList();
+    void attachedMiddlewareRegistersAllFourToolsAtBuildTime() throws Exception {
+        HarnessAgent agent = build(new A2uiMiddleware());
+        List<String> toolNames = toolNamesOf(agent);
         assertTrue(toolNames.contains("a2ui_catalog"));
         assertTrue(toolNames.contains("a2ui_render"));
         assertTrue(toolNames.contains("a2ui_present"));
         assertTrue(toolNames.contains("a2ui_ask_user_question"));
-        assertTrue(
-                agent.getDelegate().getMiddlewares().stream()
-                        .anyMatch(A2uiPresentStopMiddleware.class::isInstance));
     }
 
     @Test
-    void withoutExtensionNoA2uiToolsAreRegistered() throws Exception {
-        HarnessAgent agent = build(false);
-        List<String> toolNames =
-                agent.getDelegate().getToolkit().getToolSchemas().stream()
-                        .map(ToolSchema::getName)
-                        .toList();
+    void withoutMiddlewareNoA2uiTools() throws Exception {
+        HarnessAgent agent = build(null);
+        List<String> toolNames = toolNamesOf(agent);
         assertFalse(toolNames.contains("a2ui_catalog"));
         assertFalse(toolNames.contains("a2ui_render"));
         assertFalse(toolNames.contains("a2ui_present"));
         assertFalse(toolNames.contains("a2ui_ask_user_question"));
-        assertFalse(
-                agent.getDelegate().getMiddlewares().stream()
-                        .anyMatch(A2uiPresentStopMiddleware.class::isInstance));
     }
 
     @Test
-    void brokenCatalogFailsTheBuild() throws Exception {
-        Files.createDirectories(workspace);
-        A2uiConfig broken =
-                A2uiConfig.builder().catalogResource("a2ui/does-not-exist.json").build();
+    void brokenCatalogFailsFastAtConstruction() {
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        HarnessAgent.builder()
-                                .name("a2ui-broken-catalog")
-                                .model(stubModel())
-                                .workspace(workspace)
-                                .abstractFilesystem(new LocalFilesystem(workspace))
-                                .extension(new A2uiExtension(broken))
-                                .build());
+                        new A2uiMiddleware(
+                                A2uiConfig.builder()
+                                        .catalogResource("a2ui/does-not-exist.json")
+                                        .build()));
     }
 }
