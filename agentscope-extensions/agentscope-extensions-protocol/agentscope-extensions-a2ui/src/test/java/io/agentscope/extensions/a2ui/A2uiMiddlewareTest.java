@@ -80,13 +80,14 @@ class A2uiMiddlewareTest {
     }
 
     @Test
-    void attachedMiddlewareRegistersAllFourToolsAtBuildTime() throws Exception {
+    void attachedMiddlewareRegistersParentToolsWithoutCatalog() throws Exception {
         HarnessAgent agent = build(new A2uiMiddleware());
         List<String> toolNames = toolNamesOf(agent);
-        assertTrue(toolNames.contains("a2ui_catalog"));
         assertTrue(toolNames.contains("a2ui_render"));
         assertTrue(toolNames.contains("a2ui_present"));
         assertTrue(toolNames.contains("a2ui_ask_user_question"));
+        // The component DSL (catalog read + tree submit) lives only on the render sub-agent.
+        assertFalse(toolNames.contains("a2ui_catalog"));
     }
 
     @Test

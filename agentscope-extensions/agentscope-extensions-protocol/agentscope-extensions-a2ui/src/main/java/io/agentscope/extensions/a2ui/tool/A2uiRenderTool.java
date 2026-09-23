@@ -24,8 +24,10 @@ import java.util.Map;
 import reactor.core.publisher.Mono;
 
 /**
- * Displays a structured UI: the LLM submits a component tree, the server validates it against the
- * catalog and returns the A2UI envelope JSON as the tool result text (spec §5).
+ * Displays a structured UI: the LLM describes the desired UI in natural language, a dedicated
+ * render sub-agent ({@link io.agentscope.extensions.a2ui.A2uiRenderManager}) designs and submits
+ * the component tree, and the server returns the A2UI envelope JSON as the tool result text
+ * (spec §5).
  */
 public class A2uiRenderTool implements AgentTool {
 
@@ -42,18 +44,19 @@ public class A2uiRenderTool implements AgentTool {
 
     @Override
     public String getDescription() {
-        return "Render (create or update) a structured A2UI surface from a component tree. Call"
-                + " a2ui_catalog first to obtain the component catalog. Never hand-write A2UI JSON"
-                + " in reply text — always submit it here.";
+        return "Render (create or update) a structured A2UI surface from a natural-language"
+                + " description; a dedicated render agent generates the component tree. Put the"
+                + " UI spec in `description` and any data it must show in `context`. Never"
+                + " hand-write A2UI JSON in reply text — always submit it here.";
     }
 
     @Override
     public Map<String, Object> getParameters() {
-        return A2uiComponentSchema.componentsSchema();
+        return A2uiIntentSchema.intentSchema();
     }
 
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
-        return A2uiComponentSchema.invokeRender(renderer, param, "A2UI render failed: ");
+        return A2uiIntentSchema.invokeRender(renderer, param, "A2UI render failed: ");
     }
 }

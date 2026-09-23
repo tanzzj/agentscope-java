@@ -24,9 +24,9 @@ import java.util.Map;
 import reactor.core.publisher.Mono;
 
 /**
- * Shared JSON schema and invocation pipeline for the component-tree tools ({@code a2ui_render} /
- * {@code a2ui_present}). Validation failures never throw out of the tool: they are returned as
- * {@code error} results so the ReAct loop lets the LLM self-correct.
+ * Shared JSON schema and invocation pipeline for the component-tree submission used inside the
+ * A2UI render sub-agent (see {@link A2uiTreeRenderTool}). Validation failures never throw out of
+ * the tool: they are returned as {@code error} results so the child's ReAct loop self-corrects.
  */
 final class A2uiComponentSchema {
 

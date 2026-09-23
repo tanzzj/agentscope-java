@@ -43,9 +43,10 @@ public final class A2uiPresentStopMiddleware implements MiddlewareBase {
                 + "## A2UI structured UI\n"
                 + "- Show structured UI with `a2ui_render`; deliver the final UI with"
                 + " `a2ui_present`. Never hand-write A2UI envelope JSON in reply text.\n"
+                + "- Both tools take a natural-language `description` of the UI (plus optional"
+                + " `context` data it must show); a dedicated render agent builds the component"
+                + " tree — you never handle components or props yourself.\n"
                 + "- `surfaceId` is managed by the system: never generate, guess, or modify it.\n"
-                + "- Call `a2ui_catalog` once before your first render/present to load the"
-                + " component catalog.\n"
                 + "- Collect user input with `a2ui_ask_user_question` instead of plain-text"
                 + " follow-up questions.\n";
 

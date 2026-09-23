@@ -111,7 +111,7 @@ public final class A2uiCatalog {
                 .append(", version ")
                 .append(version)
                 .append(")\n\n");
-        sb.append("Submit UIs through `a2ui_render` / `a2ui_present` as a `components` array of\n");
+        sb.append("Submit the UI through `a2ui_render` as a `components` array of\n");
         sb.append(
                 "`{id, component, props}` objects. `id` must be unique per submission; `props`\n");
         sb.append("must follow the entry below; unknown components are rejected.\n\n");

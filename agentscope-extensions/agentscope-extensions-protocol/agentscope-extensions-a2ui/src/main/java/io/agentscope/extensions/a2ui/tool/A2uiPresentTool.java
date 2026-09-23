@@ -44,17 +44,18 @@ public class A2uiPresentTool implements AgentTool {
     @Override
     public String getDescription() {
         return "Deliver the FINAL A2UI presentation for the user's current request and end this"
-                + " round. Use once the UI is complete; after this call do not restate the UI in"
-                + " text. For intermediate/progressive updates use a2ui_render instead.";
+                + " round, from a natural-language `description` (plus optional `context` data)."
+                + " Use once the UI is complete; after this call do not restate the UI in text."
+                + " For intermediate/progressive updates use a2ui_render instead.";
     }
 
     @Override
     public Map<String, Object> getParameters() {
-        return A2uiComponentSchema.componentsSchema();
+        return A2uiIntentSchema.intentSchema();
     }
 
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
-        return A2uiComponentSchema.invokeRender(renderer, param, "A2UI present failed: ");
+        return A2uiIntentSchema.invokeRender(renderer, param, "A2UI present failed: ");
     }
 }

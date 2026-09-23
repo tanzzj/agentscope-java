@@ -16,8 +16,9 @@
 package io.agentscope.extensions.a2ui;
 
 /**
- * Configuration for the A2UI capability. Mirrors {@code MemoryConfig}: passed to
- * {@code HarnessAgent.Builder.a2ui(A2uiConfig)}; all fields carry sensible defaults.
+ * Configuration for the A2UI capability. Passed to the {@link A2uiMiddleware} constructor
+ * (plain-middleware wiring, no builder API on the framework side); all fields carry sensible
+ * defaults.
  */
 public final class A2uiConfig {
 
@@ -26,6 +27,8 @@ public final class A2uiConfig {
     private final boolean stopAfterPresent;
     private final int maxComponents;
     private final boolean surfacePersistEnabled;
+    private final String renderPrompt;
+    private final int renderMaxIters;
 
     private A2uiConfig(Builder builder) {
         this.catalogId = builder.catalogId;
@@ -33,6 +36,8 @@ public final class A2uiConfig {
         this.stopAfterPresent = builder.stopAfterPresent;
         this.maxComponents = builder.maxComponents;
         this.surfacePersistEnabled = builder.surfacePersistEnabled;
+        this.renderPrompt = builder.renderPrompt;
+        this.renderMaxIters = builder.renderMaxIters;
     }
 
     public static A2uiConfig defaults() {
@@ -68,6 +73,16 @@ public final class A2uiConfig {
         return surfacePersistEnabled;
     }
 
+    /** SYSTEM prompt for the render sub-agent; {@code null} = SDK default prompt. */
+    public String renderPrompt() {
+        return renderPrompt;
+    }
+
+    /** ReAct iteration bound of one render sub-agent run. */
+    public int renderMaxIters() {
+        return renderMaxIters;
+    }
+
     public static final class Builder {
 
         private String catalogId = "agentscope.io:a2ui/basic";
@@ -75,6 +90,8 @@ public final class A2uiConfig {
         private boolean stopAfterPresent = true;
         private int maxComponents = 50;
         private boolean surfacePersistEnabled = true;
+        private String renderPrompt = null;
+        private int renderMaxIters = 6;
 
         private Builder() {}
 
@@ -100,6 +117,16 @@ public final class A2uiConfig {
 
         public Builder surfacePersistEnabled(boolean surfacePersistEnabled) {
             this.surfacePersistEnabled = surfacePersistEnabled;
+            return this;
+        }
+
+        public Builder renderPrompt(String renderPrompt) {
+            this.renderPrompt = renderPrompt;
+            return this;
+        }
+
+        public Builder renderMaxIters(int renderMaxIters) {
+            this.renderMaxIters = renderMaxIters;
             return this;
         }
 

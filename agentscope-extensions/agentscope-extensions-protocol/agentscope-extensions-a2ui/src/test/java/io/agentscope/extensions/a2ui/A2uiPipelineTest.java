@@ -25,10 +25,17 @@ import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.RequestStopEvent;
 import io.agentscope.core.event.ToolResultEndEvent;
+import io.agentscope.core.message.ContentBlock;
+import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolResultState;
+import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.middleware.ActingInput;
+import io.agentscope.core.model.ChatModelBase;
+import io.agentscope.core.model.ChatResponse;
+import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.ToolSchema;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.ToolSuspendException;
 import io.agentscope.extensions.a2ui.catalog.A2uiCatalog;
@@ -36,8 +43,11 @@ import io.agentscope.extensions.a2ui.envelope.A2uiEnvelopeValidator;
 import io.agentscope.extensions.a2ui.middleware.A2uiPresentStopMiddleware;
 import io.agentscope.extensions.a2ui.tool.A2uiAskUserQuestionTool;
 import io.agentscope.extensions.a2ui.tool.A2uiRenderTool;
+import io.agentscope.extensions.a2ui.tool.A2uiTreeRenderTool;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
@@ -52,7 +62,61 @@ class A2uiPipelineTest {
         return new A2uiRenderer(
                 config,
                 CATALOG,
-                new io.agentscope.extensions.a2ui.state.A2uiSurfaceRegistry(config, () -> null));
+                new io.agentscope.extensions.a2ui.state.A2uiSurfaceRegistry(config, () -> null),
+                () -> null);
+    }
+
+    private static A2uiRenderer renderer(A2uiConfig config, ChatModelBase renderModel) {
+        return new A2uiRenderer(
+                config,
+                CATALOG,
+                new io.agentscope.extensions.a2ui.state.A2uiSurfaceRegistry(config, () -> null),
+                () -> renderModel);
+    }
+
+    /** Replays one scripted {@link ChatResponse} per model call; empty text when exhausted. */
+    private static final class ScriptedModel extends ChatModelBase {
+        private final List<ChatResponse> script;
+        private final AtomicInteger idx = new AtomicInteger();
+        final AtomicInteger calls = new AtomicInteger();
+
+        ScriptedModel(List<ChatResponse> script) {
+            this.script = script;
+        }
+
+        @Override
+        public String getModelName() {
+            return "scripted";
+        }
+
+        @Override
+        protected Flux<ChatResponse> doStream(
+                List<Msg> messages, List<ToolSchema> tools, GenerateOptions options) {
+            calls.incrementAndGet();
+            int i = idx.getAndIncrement();
+            return Flux.just(i < script.size() ? script.get(i) : textResponse(""));
+        }
+    }
+
+    private static ChatResponse textResponse(String text) {
+        return ChatResponse.builder()
+                .content(List.<ContentBlock>of(TextBlock.builder().text(text).build()))
+                .build();
+    }
+
+    private static ChatResponse toolUse(String id, String name, Map<String, Object> input) {
+        return ChatResponse.builder()
+                .content(
+                        List.<ContentBlock>of(
+                                ToolUseBlock.builder()
+                                        .id(id)
+                                        .name(name)
+                                        .input(input)
+                                        .content(
+                                                io.agentscope.core.util.JsonUtils.getJsonCodec()
+                                                        .toJson(input))
+                                        .build()))
+                .build();
     }
 
     private static Map<String, Object> comp(
@@ -171,16 +235,155 @@ class A2uiPipelineTest {
     }
 
     @Test
-    void renderToolReturnsValidationErrorAsErrorResult() {
-        A2uiRenderTool tool = new A2uiRenderTool(renderer(A2uiConfig.defaults()));
-        ToolCallParam param =
-                ToolCallParam.builder()
-                        .runtimeContext(RuntimeContext.builder().sessionId("s").build())
-                        .input(Map.of("components", List.of(comp("c1", "Nope", Map.of()))))
-                        .build();
-        ToolResultBlock result = tool.callAsync(param).block();
+    void treeRenderToolValidatesAndCapturesEnvelope() {
+        AtomicReference<String> sink = new AtomicReference<>();
+        A2uiTreeRenderTool tool =
+                new A2uiTreeRenderTool(renderer(A2uiConfig.defaults()), sink::set);
+        RuntimeContext rc = RuntimeContext.builder().sessionId("s").build();
+
+        ToolResultBlock invalid =
+                tool.callAsync(
+                                ToolCallParam.builder()
+                                        .runtimeContext(rc)
+                                        .input(
+                                                Map.of(
+                                                        "components",
+                                                        List.of(comp("c1", "Nope", Map.of()))))
+                                        .build())
+                        .block();
+        assertEquals(ToolResultState.ERROR, invalid.getState());
+        assertTrue(textOf(invalid).contains("unknown component"));
+        assertTrue(sink.get() == null, "rejected submissions must not reach the sink");
+
+        ToolResultBlock valid =
+                tool.callAsync(
+                                ToolCallParam.builder()
+                                        .runtimeContext(rc)
+                                        .input(
+                                                Map.of(
+                                                        "components",
+                                                        List.of(
+                                                                comp(
+                                                                        "c1",
+                                                                        "Heading",
+                                                                        Map.of(
+                                                                                "text", "Hi",
+                                                                                "level", 2)))))
+                                        .build())
+                        .block();
+        assertEquals(ToolResultState.RUNNING, valid.getState());
+        assertEquals(textOf(valid), sink.get());
+        assertTrue(sink.get().contains("\"messageType\":\"createSurface\""));
+    }
+
+    @Test
+    void renderToolRunsChildAgentThroughCatalogAndSubmitTurns() {
+        ScriptedModel child =
+                new ScriptedModel(
+                        List.of(
+                                toolUse("t1", "a2ui_catalog", Map.of()),
+                                toolUse(
+                                        "t2",
+                                        "a2ui_render",
+                                        Map.of(
+                                                "components",
+                                                List.of(
+                                                        comp(
+                                                                "c1",
+                                                                "Heading",
+                                                                Map.of(
+                                                                        "text", "Hi", "level",
+                                                                        2))))),
+                                textResponse("done")));
+        A2uiRenderTool tool = new A2uiRenderTool(renderer(A2uiConfig.defaults(), child));
+        ToolResultBlock result =
+                tool.callAsync(
+                                ToolCallParam.builder()
+                                        .runtimeContext(
+                                                RuntimeContext.builder().sessionId("s").build())
+                                        .input(Map.of("description", "Show a greeting"))
+                                        .build())
+                        .block();
+        assertEquals(ToolResultState.RUNNING, result.getState(), textOf(result));
+        assertTrue(textOf(result).contains("\"messageType\":\"createSurface\""));
+        assertEquals(3, child.calls.get());
+    }
+
+    @Test
+    void childAgentSelfCorrectsValidationErrorsInsideItsLoop() {
+        ScriptedModel child =
+                new ScriptedModel(
+                        List.of(
+                                toolUse("t1", "a2ui_catalog", Map.of()),
+                                toolUse(
+                                        "t2",
+                                        "a2ui_render",
+                                        Map.of(
+                                                "components",
+                                                List.of(comp("c1", "Nope", Map.of())))),
+                                toolUse(
+                                        "t3",
+                                        "a2ui_render",
+                                        Map.of(
+                                                "components",
+                                                List.of(comp("c1", "Text", Map.of("text", "ok"))))),
+                                textResponse("done")));
+        A2uiRenderTool tool = new A2uiRenderTool(renderer(A2uiConfig.defaults(), child));
+        ToolResultBlock result =
+                tool.callAsync(
+                                ToolCallParam.builder()
+                                        .runtimeContext(
+                                                RuntimeContext.builder().sessionId("s").build())
+                                        .input(Map.of("description", "Anything"))
+                                        .build())
+                        .block();
+        assertEquals(ToolResultState.RUNNING, result.getState(), textOf(result));
+        assertTrue(textOf(result).contains("\"messageType\":\"createSurface\""));
+        assertEquals(4, child.calls.get());
+    }
+
+    @Test
+    void renderToolFailsWhenChildNeverSubmitsValidTree() {
+        ScriptedModel child = new ScriptedModel(List.of(textResponse("I can't design that")));
+        A2uiRenderTool tool = new A2uiRenderTool(renderer(A2uiConfig.defaults(), child));
+        ToolResultBlock result =
+                tool.callAsync(
+                                ToolCallParam.builder()
+                                        .runtimeContext(
+                                                RuntimeContext.builder().sessionId("s").build())
+                                        .input(Map.of("description", "Whatever"))
+                                        .build())
+                        .block();
         assertEquals(ToolResultState.ERROR, result.getState());
-        assertTrue(textOf(result).contains("unknown component"));
+        assertTrue(textOf(result).contains("ended without an accepted component submission"));
+    }
+
+    @Test
+    void renderToolRequiresDescription() {
+        A2uiRenderTool tool = new A2uiRenderTool(renderer(A2uiConfig.defaults()));
+        ToolResultBlock result =
+                tool.callAsync(
+                                ToolCallParam.builder()
+                                        .runtimeContext(RuntimeContext.empty())
+                                        .input(Map.of())
+                                        .build())
+                        .block();
+        assertEquals(ToolResultState.ERROR, result.getState());
+        assertTrue(textOf(result).contains("`description` must be a non-blank"));
+    }
+
+    @Test
+    void renderToolFailsFastWithoutRenderModel() {
+        A2uiRenderTool tool = new A2uiRenderTool(renderer(A2uiConfig.defaults()));
+        ToolResultBlock result =
+                tool.callAsync(
+                                ToolCallParam.builder()
+                                        .runtimeContext(RuntimeContext.empty())
+                                        .input(Map.of("description", "Anything"))
+                                        .build())
+                        .block();
+        assertEquals(ToolResultState.ERROR, result.getState());
+        assertTrue(textOf(result).contains("no render model available"));
     }
 
     @Test
