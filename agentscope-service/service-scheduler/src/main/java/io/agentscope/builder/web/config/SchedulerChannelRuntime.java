@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.builder.runtime.config.ChannelConfigEntry;
 import io.agentscope.builder.runtime.config.ChannelTypeRegistry;
 import io.agentscope.extensions.channel.dingtalk.DingTalkChannel;
+import io.agentscope.extensions.channel.discord.DiscordChannel;
 import io.agentscope.extensions.channel.feishu.FeishuChannel;
 import io.agentscope.extensions.channel.github.GitHubChannel;
 import io.agentscope.extensions.channel.gitlab.GitLabChannel;
@@ -112,6 +113,7 @@ public class SchedulerChannelRuntime implements SmartLifecycle {
             return;
         }
         ChannelTypeRegistry.register(DingTalkChannel.TYPE, DingTalkChannel::fromProperties);
+        ChannelTypeRegistry.register(DiscordChannel.TYPE, DiscordChannel::fromProperties);
         ChannelTypeRegistry.register(FeishuChannel.TYPE, FeishuChannel::fromProperties);
         ChannelTypeRegistry.register(WeComChannel.TYPE, WeComChannel::fromProperties);
         ChannelTypeRegistry.register(GitHubChannel.TYPE, GitHubChannel::fromProperties);

@@ -33,6 +33,7 @@
     <modules>
         <module>agentscope-extensions-channel-common</module>
         <module>agentscope-extensions-channel-dingtalk</module>
+        <module>agentscope-extensions-channel-discord</module>
         <module>agentscope-extensions-channel-feishu</module>
         <module>agentscope-extensions-channel-github</module>
         <module>agentscope-extensions-channel-gitlab</module>

@@ -117,6 +117,7 @@
         <jgit.version>7.6.0.202603022253-r</jgit.version>
         <fabric8.kubernetes-client.version>7.8.0</fabric8.kubernetes-client.version>
         <protobuf.java.version>4.35.0</protobuf.java.version>
+        <jda.version>5.6.1</jda.version>
 
         <spotless.version>3.4.0</spotless.version>
         <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
@@ -533,6 +534,13 @@
                 <groupId>org.eclipse.jgit</groupId>
                 <artifactId>org.eclipse.jgit</artifactId>
                 <version>${jgit.version}</version>
+            </dependency>
+
+            <!-- JDA: Discord Gateway WebSocket client -->
+            <dependency>
+                <groupId>net.dv8tion</groupId>
+                <artifactId>JDA</artifactId>
+                <version>${jda.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
