@@ -129,6 +129,36 @@ public final class DiscordChannel extends ListenerAdapter implements Channel {
     public static DiscordChannel fromProperties(
             String channelId, ChannelConfig routing, Map<String, Object> rawProperties) {
         DiscordChannelProperties props = DiscordChannelProperties.from(channelId, rawProperties);
+        return create(channelId, routing, props);
+    }
+
+    /**
+     * Typed factory for callers that already hold strongly-typed configuration values (e.g. from a
+     * database row rather than JSON deserialisation). Equivalent to {@link #fromProperties} but
+     * skips the {@code Map<String, Object>} round-trip.
+     *
+     * @param channelId logical channel id
+     * @param routing routing configuration (bindings, defaultAgentId, dmScope)
+     * @param botToken Discord bot token
+     * @param onlyAtReply when {@code true}, guild messages require an @-mention; DMs always respond
+     * @param proxyHost optional HTTP CONNECT proxy host for the Gateway WebSocket; {@code null} for
+     *     direct connection
+     * @param proxyPort proxy port; ignored when {@code proxyHost} is {@code null}
+     */
+    public static DiscordChannel create(
+            String channelId,
+            ChannelConfig routing,
+            String botToken,
+            boolean onlyAtReply,
+            String proxyHost,
+            int proxyPort) {
+        DiscordChannelProperties props =
+                new DiscordChannelProperties(botToken, onlyAtReply, proxyHost, proxyPort);
+        return create(channelId, routing, props);
+    }
+
+    private static DiscordChannel create(
+            String channelId, ChannelConfig routing, DiscordChannelProperties props) {
         BotLoopGuard guard = new BotLoopGuard();
         ChannelRouter router = new ChannelRouter(routing.defaultAgentId());
         ScheduledExecutorService retryExec = DiscordOutboundClient.createRetryExecutor();
